@@ -16,6 +16,11 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.widget.Toast;
 import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.ScrollView;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -23,7 +28,6 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import android.util.Log;
-
 
 public class MainActivity extends AppCompatActivity {
 
@@ -34,6 +38,9 @@ public class MainActivity extends AppCompatActivity {
     RecyclerView fileRecyclerView;
     FileAdapter fileAdapter;
 
+    TextView logView;
+    ScrollView logScroll;
+
     private File albumsRoot;
     private File currentDir;
     private File forResolve;
@@ -41,9 +48,13 @@ public class MainActivity extends AppCompatActivity {
     private boolean showingRowExternalAlbums = false;
     private boolean showingExternalAlbums = false;
 
+    private PreferencesManager prefs;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        prefs = new PreferencesManager(this);
 
         albumsRoot = new File(Environment.getExternalStorageDirectory(), "GalleryPro");
         forResolve = new File(albumsRoot, "For resolve");
@@ -55,10 +66,38 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileRecyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        LinearLayout listsLayout = new LinearLayout(this);
+        listsLayout.setOrientation(LinearLayout.VERTICAL);
+        listsLayout.addView(recyclerView);
+        listsLayout.addView(fileRecyclerView);
+
+        logView = new TextView(this);
+        logView.setTextSize(14);
+        logView.setPadding(16, 16, 16, 16);
+        logView.append("Logs:\n");
+
+        logScroll = new ScrollView(this);
+        logScroll.addView(logView);
+        logScroll.setVisibility(prefs.isLogScrollVisible() ? View.VISIBLE : View.GONE);
+
+        Logs.init(logView, logScroll);
+
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.addView(recyclerView);
-        layout.addView(fileRecyclerView);
+
+        layout.addView(listsLayout,
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        0,
+                        2
+                ));
+
+        layout.addView(logScroll,
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        0,
+                        1
+                ));
 
         setContentView(layout);
 
@@ -86,6 +125,12 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }
+        });
+    }
+
+    public void log(String text) {
+        runOnUiThread(() -> {
+            logView.append(text + "\n");
         });
     }
 
@@ -149,6 +194,43 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+
+        // Проверка в лог: добавился ли элемент на самом деле?
+        if (menu.size() > 0) {
+            Logs.log("Меню успешно создано. Элементов: " + menu.size());
+        } else {
+            Logs.log("Внимание! Меню пустое после inflate!");
+        }
+
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Этот метод обрабатывает нажатия на элементы меню
+        int id = item.getItemId();
+
+        if (id == R.id.action_settings) {
+            Logs.log("action_settings");
+            return true;
+        }
+        else if (id == R.id.action_logs) {
+            boolean nextState = !prefs.isLogScrollVisible();
+            logScroll.setVisibility(nextState ? View.VISIBLE : View.GONE);
+            prefs.setLogScrollVisible(nextState);
+            return true;
+        }
+        else {
+            String itemTitle = item.getTitle() != null ? item.getTitle().toString() : "No Title";
+            Logs.log("unreleased action "+itemTitle);
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
     private void loadAlbums(File dir) {
         // Убедимся, что корневая папка GalleryPro существует
         if (!albumsRoot.exists()) {
@@ -182,10 +264,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Запоминаем текущую директорию
         currentDir = dir;
-        Log.w("12345", currentDir.getAbsolutePath());
 
         // Загружаем список альбомов (подпапок)
-        List<Album> albumList = listAlbumStructure(dir);
+        List<Album> albumsList = listAlbumStructure(dir);
 
         if (showingRowExternalAlbums) {
             // Добавляем специальный "альбом" сверху
@@ -194,10 +275,10 @@ public class MainActivity extends AppCompatActivity {
                     "EXTERNAL_ALBUMS_SPECIAL_PATH",
                     null
             );
-            albumList.add(0, externalAlbumsItem);
+            albumsList.add(0, externalAlbumsItem);
         }
 
-        adapter = new AlbumAdapter(albumList, 0, album -> {
+        adapter = new AlbumAdapter(albumsList, 0, album -> {
             if ("EXTERNAL_ALBUMS_SPECIAL_PATH".equals(album.path)) {
                 loadExternalAlbums();
             } else {
@@ -208,7 +289,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
 
         // Загружаем список файлов изображений
-        List<String> files = listImageFiles(dir);
+        List<File> files = listImageFiles(dir);
         fileAdapter = new FileAdapter(files);
         fileRecyclerView.setAdapter(fileAdapter);
     }
@@ -259,8 +340,8 @@ public class MainActivity extends AppCompatActivity {
         return albums;
     }
 
-    private List<String> listImageFiles(File dir) {
-        List<String> files = new ArrayList<>();
+    private List<File> listImageFiles(File dir) {
+        List<File> filesOutput = new ArrayList<>();
         File[] fileList = dir.listFiles();
         if (fileList != null) {
             for (File file : fileList) {
@@ -273,7 +354,7 @@ public class MainActivity extends AppCompatActivity {
                             || name.endsWith(".mov") || name.endsWith(".wmv") || name.endsWith(".flv")
                             || name.endsWith(".3gp") || name.endsWith(".webm") || name.endsWith(".m4v")
                             || name.endsWith(".ts")  || name.endsWith(".mpeg") || name.endsWith(".mpg")) {
-                        files.add(file.getName());
+                        filesOutput.add(file);
                     }
 //                    else {
 //                        // Если файл не является изображением, перемещаем его в папку notImages
@@ -287,6 +368,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
-        return files;
+        return filesOutput;
     }
 }

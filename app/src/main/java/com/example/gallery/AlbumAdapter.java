@@ -4,6 +4,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
+import android.widget.ImageView;
 
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -27,10 +28,12 @@ public class AlbumAdapter extends RecyclerView.Adapter<AlbumAdapter.AlbumViewHol
 
     public static class AlbumViewHolder extends RecyclerView.ViewHolder {
         public TextView albumName;
+        public ImageView folderIcon;
 
         public AlbumViewHolder(View view) {
             super(view);
             albumName = view.findViewById(R.id.albumName);
+            folderIcon = view.findViewById(R.id.folderIcon);
         }
     }
 
@@ -45,13 +48,16 @@ public class AlbumAdapter extends RecyclerView.Adapter<AlbumAdapter.AlbumViewHol
     public void onBindViewHolder(AlbumViewHolder holder, int position) {
         Album album = albums.get(position);
 
-        int paddingLeft = 16 + indent * 40; // отступы для иерархии
-        holder.albumName.setPadding(paddingLeft, holder.albumName.getPaddingTop(),
-                holder.albumName.getPaddingRight(), holder.albumName.getPaddingBottom());
+        holder.itemView.setPadding(
+                16 + indent * 40,
+                holder.itemView.getPaddingTop(),
+                holder.itemView.getPaddingRight(),
+                holder.itemView.getPaddingBottom()
+        );
 
         holder.albumName.setText(album.name);
 
-        holder.albumName.setOnClickListener(v -> {
+        holder.itemView.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onAlbumClick(album);
             }
